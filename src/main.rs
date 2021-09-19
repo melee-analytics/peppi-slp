@@ -1,7 +1,7 @@
 use std::{
 	error::Error,
 	fs::{self, File},
-	io,
+	io::{self, Read, Write},
 	path,
 	sync::Arc,
 };
@@ -25,7 +25,7 @@ use peppi::{
 
 #[derive(Clone, Copy)]
 enum Format {
-	Json, Peppi, Rust
+	Json, Peppi, Rust, Slippi
 }
 
 struct Opts {
@@ -101,26 +101,32 @@ fn write_peppi<P: AsRef<path::Path>>(game: &Game, dir: P, skip_frames: bool) -> 
 	Ok(())
 }
 
-fn write_json<W: io::Write>(game: &Game, mut out: W) -> Result<(), Box<dyn Error>> {
+fn write_json<W: Write>(game: &Game, mut out: W) -> Result<(), Box<dyn Error>> {
 	writeln!(out, "{}", serde_json::to_string(game)?)?;
 	Ok(())
 }
 
-fn write_rust<W: io::Write>(game: &Game, mut out: W) -> io::Result<()> {
+fn write_rust<W: Write>(game: &Game, mut out: W) -> io::Result<()> {
 	writeln!(out, "{:#?}", game)
 }
 
-fn write<W: io::Write>(game: &Game, out: W, format: Format) -> Result<(), Box<dyn Error>> {
+fn write_slippi<W: Write>(game: &Game, mut out: W) -> Result<(), Box<dyn Error>> {
+	peppi::unparse::unparse(&mut out, game)?;
+	Ok(())
+}
+
+fn write<W: Write>(game: &Game, out: W, format: Format) -> Result<(), Box<dyn Error>> {
 	use Format::*;
 	match format {
 		Json => write_json(game, out)?,
 		Rust => write_rust(game, out)?,
+		Slippi => write_slippi(game, out)?,
 		_ => unimplemented!(),
 	}
 	Ok(())
 }
 
-fn inspect<R: io::Read>(mut buf: R, opts: &Opts) -> Result<(), Box<dyn Error>> {
+fn inspect<R: Read>(mut buf: R, opts: &Opts) -> Result<(), Box<dyn Error>> {
 	let game = peppi::game(&mut buf, Some(peppi::parse::Opts { skip_frames: opts.skip_frames }))?;
 	use Format::*;
 	match (opts.format, opts.outfile.as_str()) {
@@ -143,7 +149,7 @@ fn parse_opts() -> Result<Opts, String> {
 		.arg(Arg::with_name("format")
 			 .help("Output format")
 			 .short("f")
-			 .possible_values(&["json", "peppi", "rust"])
+			 .possible_values(&["json", "peppi", "rust", "slippi"])
 			 .default_value("json"))
 		.arg(Arg::with_name("names")
 			.help("Append names for known constants")
@@ -167,6 +173,7 @@ fn parse_opts() -> Result<Opts, String> {
 			"json" => Json,
 			"peppi" => Peppi,
 			"rust" => Rust,
+			"slippi" => Slippi,
 			_ => unimplemented!(),
 		}
 	};
